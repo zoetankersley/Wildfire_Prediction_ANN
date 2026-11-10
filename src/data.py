@@ -1,13 +1,13 @@
-"""Shared data code: load the cleaned data, define feature groups, split by location, and preprocess."""
+"""Shared data code: load the cleaned California data, define feature groups, split by location, and preprocess."""
 from pathlib import Path
 
 import pandas as pd
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
 
 # Works no matter which folder you run from
-DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "clean_2016_2020.parquet"
+DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "clean_ca_2016_2020.parquet"
 
 # Feature Groups
 WEATHER = [
@@ -17,7 +17,7 @@ WEATHER = [
     "pr_Normal", "tmmn_Normal", "tmmx_Normal", "rmin_Normal", "rmax_Normal",
     "fm100_Normal", "fm1000_Normal", "bi_Normal", "vpd_Normal", "erc_Normal",
     "Annual_precipitation", "Annual_tempreture",
-    # How unusual the day is (converted to 0-5 in the notebook)
+    # How unusual the day is (converted to percentile numbers in the notebook)
     "tmmn_Percentile", "tmmx_Percentile", "sph_Percentile", "vs_Percentile",
     "fm100_Percentile", "bi_Percentile", "vpd_Percentile", "erc_Percentile",
     # Season
@@ -37,11 +37,11 @@ GEOGRAPHY = [
 ]
 
 TARGET = "TARGET"
-GROUP = "REGION"
+GROUP = "REGION"   # 0.5 x 0.5 degree grid block, created in the cleaning notebook
 
 
 def load():
-    """Load the cleaned data saved by notebooks/01_eda.ipynb."""
+    """Load the cleaned data saved by notebooks/data_cleaning.ipynb."""
     return pd.read_parquet(DATA_PATH)
 
 
@@ -51,7 +51,12 @@ def feature_sets(df):
     vegetation = VEGETATION_BASE + one_hot
 
     def keep(cols):
-        return [c for c in cols if c in df.columns]   # skip any column that's missing
+        # Skip columns that are missing, and warn about any that aren't numeric (the models need numbers)
+        present = [c for c in cols if c in df.columns]
+        bad = [c for c in present if not pd.api.types.is_numeric_dtype(df[c])]
+        if bad:
+            print("Skipping non-numeric columns:", bad)
+        return [c for c in present if c not in bad]
 
     return {
         "model1_weather": keep(WEATHER),
@@ -61,7 +66,7 @@ def feature_sets(df):
 
 
 def split(df, seed=42):
-    """Location split: each 1x1 degree grid block goes entirely to train, val, or test (70/15/15)."""
+    """Quick location split for experiments: whole grid blocks go to train, val, or test (about 70/15/15)."""
     gss = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=seed)
     trval_idx, test_idx = next(gss.split(df, groups=df[GROUP]))
     trval, test = df.iloc[trval_idx], df.iloc[test_idx]
@@ -69,6 +74,14 @@ def split(df, seed=42):
     gss2 = GroupShuffleSplit(n_splits=1, test_size=0.15 / 0.85, random_state=seed)
     tr_idx, val_idx = next(gss2.split(trval, groups=trval[GROUP]))
     return trval.iloc[tr_idx], trval.iloc[val_idx], test
+
+
+def cv_folds(df, n_splits=5):
+    """Location cross-validation for final results: each fold holds out a different set of grid blocks.
+    Yields (train, test) DataFrames. Report metrics as mean +/- std across folds."""
+    gkf = GroupKFold(n_splits=n_splits)
+    for tr_idx, te_idx in gkf.split(df, groups=df[GROUP]):
+        yield df.iloc[tr_idx], df.iloc[te_idx]
 
 
 def prepare(train, val, test, features):
