@@ -26,7 +26,6 @@ WEATHER = [
 
 VEGETATION_BASE = [
     "NDVI-1day", "NDVI_min", "NDVI_max", "NDVI_mean", "MOD_NDVI_12m",
-    "CheatGrass", "ExoticAnnualGrass",
 ]
 
 GEOGRAPHY = [
