@@ -12,7 +12,7 @@ DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "clean_2016_2020.p
 # Feature Groups
 WEATHER = [
     # Day of ignition
-    "pr", "tmmn", "tmmx", "rmin", "rmax", "vs", "vpd", "fm100", "fm1000", "bi", "erc",
+    "pr", "tmmn", "tmmx", "rmin", "rmax", "sph", "vs", "srad", "etr", "vpd", "fm100", "fm1000", "bi", "erc",
     # Long-term normals for that place and day of year
     "pr_Normal", "tmmn_Normal", "tmmx_Normal", "rmin_Normal", "rmax_Normal",
     "fm100_Normal", "fm1000_Normal", "bi_Normal", "vpd_Normal", "erc_Normal",
