@@ -107,3 +107,11 @@ def mutability(df):
     immutable = WEATHER + GEOGRAPHY    # weather, season, terrain, location
     return {"mutable": [c for c in mutable if c in df.columns],
             "immutable": [c for c in immutable if c in df.columns]}
+
+def temporal_split(df):
+    """Split the data into train, validation, and test sets based on time (year)."""
+    """Train 2016-2018, Validation 2019, Test 2020"""
+    train = df[df['FIRE_YEAR'] < 2019]
+    val = df[df['FIRE_YEAR'] == 2019]
+    test = df[df['FIRE_YEAR'] == 2020]
+    return train, val, test
