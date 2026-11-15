@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
@@ -115,3 +116,11 @@ def temporal_split(df):
     val = df[df['FIRE_YEAR'] == 2019]
     test = df[df['FIRE_YEAR'] == 2020]
     return train, val, test
+
+def log_target(df):
+    """Log-transform the target variable."""
+    return np.log1p(df["FIRE_SIZE"])
+
+def to_acres(pred_log):
+    """Convert log-transformed predictions back to acres."""
+    return np.expm1(pred_log)
