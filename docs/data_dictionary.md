@@ -172,7 +172,7 @@ Columns without a suffix are at the ignition point (30 m cell). `_1km` columns a
 | Column | Description | Range | Missing |
 |---|---|---|---|
 | `Population` | Population density near the ignition point (check the source documentation for units) | 0 – 396.5 | 0.3% |
-| `GAP_Prity` | Protected-area (PAD-US GAP) related code. Its meaning still needs to be confirmed in the source documentation. | 0, 6, 7, 8, 9 | 0% |
+| `GAP_Prity` | Protected-area (PAD-US GAP) related code. A 9 means the land is under stricter protection and a 0 is under no protection. | 0, 6, 7, 8, 9 | 0% |
 | `EPL_MOBILE` | CDC Social Vulnerability Index: percentile rank of the share of housing that is mobile homes | 0 – 1 | 0.1% |
 
 ---

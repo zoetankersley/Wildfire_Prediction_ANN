@@ -35,6 +35,8 @@ GEOGRAPHY = [
     "Aspect_sin", "Aspect_cos", "Aspect_1km_sin", "Aspect_1km_cos",
 ]
 
+HUMAN = ["Population", "GAP_Prity", "EPL_MOBILE"]
+
 TARGET = "TARGET"
 GROUP = "REGION"   # 0.5 x 0.5 degree grid block, created in the cleaning notebook
 
@@ -61,6 +63,7 @@ def feature_sets(df):
         "model1_weather": keep(WEATHER),
         "model2_weather_veg": keep(WEATHER + vegetation),
         "model3_all": keep(WEATHER + vegetation + GEOGRAPHY),
+        "model4_human": keep(WEATHER + vegetation + GEOGRAPHY + HUMAN),
     }
 
 
@@ -96,3 +99,11 @@ def prepare(train, val, test, features):
         (transform(val), val[TARGET]),
         (transform(test), test[TARGET]),
     )
+
+# to add separate the mutable and immutable features for the model explainability
+def mutability(df):
+    lc_evt = [c for c in df.columns if c.startswith(("LC_", "EVT_"))]
+    mutable = ["NDVI-1day"] + lc_evt  + HUMAN        # fuel / vegetation
+    immutable = WEATHER + GEOGRAPHY    # weather, season, terrain, location
+    return {"mutable": [c for c in mutable if c in df.columns],
+            "immutable": [c for c in immutable if c in df.columns]}
