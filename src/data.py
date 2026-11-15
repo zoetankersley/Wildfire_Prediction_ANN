@@ -1,4 +1,5 @@
 """Shared data code: load the cleaned California data, define feature groups, split by location, and preprocess."""
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -6,9 +7,12 @@ import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
 # Works no matter which folder you run from
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "clean_ca_2016_2020.parquet"
+# Saved region -> train/val/test assignment from split(df, seed=42), made in notebooks/data_splitting.ipynb
+SPLIT_PATH = Path(__file__).resolve().parent.parent / "docs" / "region_split_seed42.json"
 
 # Feature Groups
 WEATHER = [
@@ -110,8 +114,7 @@ def mutability(df):
             "immutable": [c for c in immutable if c in df.columns]}
 
 def temporal_split(df):
-    """Split the data into train, validation, and test sets based on time (year)."""
-    """Train 2016-2018, Validation 2019, Test 2020"""
+    """Split by year: train 2016-2018, validation 2019, test 2020."""
     train = df[df['FIRE_YEAR'] < 2019]
     val = df[df['FIRE_YEAR'] == 2019]
     test = df[df['FIRE_YEAR'] == 2020]
@@ -124,3 +127,22 @@ def log_target(df):
 def to_acres(pred_log):
     """Convert log-transformed predictions back to acres."""
     return np.expm1(pred_log)
+
+def random_split(df, seed=42):
+    """Randomly split the data into train, validation, and test sets to compare with location and temporal splits."""
+    train, rest = train_test_split(df, test_size=0.3, random_state=seed, stratify=df[TARGET])
+    # rest is 30% of the data, so splitting it in half gives 15% val and 15% test
+    val, test = train_test_split(rest, test_size=0.5, random_state=seed, stratify=rest[TARGET])
+    return train, val, test
+
+def combined_split(df, split_map=None):
+    """Train on 2016-2018 fires in training regions, validate on 2019 fires in validation regions,
+    test on 2020 fires in test regions. Uses the saved regional split unless a split_map is given."""
+    if split_map is None:
+        with open(SPLIT_PATH) as f:
+            split_map = json.load(f)
+    s = df["REGION"].map(split_map)
+    train = df[(df["FIRE_YEAR"] <= 2018) & (s == "train")]
+    val = df[(df["FIRE_YEAR"] == 2019) & (s == "val")]
+    test = df[(df["FIRE_YEAR"] == 2020) & (s == "test")]
+    return train, val, test
