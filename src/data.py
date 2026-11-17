@@ -30,7 +30,9 @@ WEATHER = [
 ]
 
 VEGETATION_BASE = [
-    "NDVI-1day", "NDVI_min", "NDVI_max", "NDVI_mean", "MOD_NDVI_12m",
+    "NDVI-1day",
+    "NDVI_min_avg", "NDVI_min_last", "NDVI_max_avg", "NDVI_max_last",
+    "NDVI_mean_avg", "NDVI_mean_last", "MOD_NDVI_12m_avg", "MOD_NDVI_12m_last",
 ]
 
 GEOGRAPHY = [
