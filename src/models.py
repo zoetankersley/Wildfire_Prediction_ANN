@@ -1,5 +1,8 @@
 # Baseline Model
 from sklearn.dummy import DummyClassifier
+from sklearn.linear_model import LogisticRegression
+...
+        "logistic": LogisticRegression(max_iter=1000, class_weight="balanced", random_state=seed)
 def dummy_model(seed=42):
     """Two floor baseline- the most common class and a guess based on the class proportions"""
     return {
