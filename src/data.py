@@ -93,19 +93,21 @@ def cv_folds(df, n_splits=5):
         yield df.iloc[tr_idx], df.iloc[te_idx]
 
 
-def prepare(train, val, test, features):
-    """Fill missing values and scale, fit on train only. Returns (X, y) for each split."""
+def prepare_features(train, val, test, features):
+    """Fill missing values and scale each partition using training statistics."""
     imputer = SimpleImputer(strategy="median").fit(train[features])
     scaler = StandardScaler().fit(imputer.transform(train[features]))
 
     def transform(d):
         return scaler.transform(imputer.transform(d[features]))
 
-    return (
-        (transform(train), train[TARGET]),
-        (transform(val), val[TARGET]),
-        (transform(test), test[TARGET]),
-    )
+    return tuple(transform(part) for part in (train, val, test))
+
+
+def prepare(train, val, test, features):
+    """Return preprocessed inputs and classification labels for each split."""
+    inputs = prepare_features(train, val, test, features)
+    return tuple((x, part[TARGET]) for x, part in zip(inputs, (train, val, test)))
 
 # to add separate the mutable and immutable features for the model explainability
 def mutability(df):
