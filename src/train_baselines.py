@@ -7,7 +7,10 @@ from pathlib import Path
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+from sklearn.metrics import (
+    accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score,
+    precision_recall_fscore_support,
+)
 
 from .data import (
     DATA_PATH, MODEL_NAMES, SPLIT_SEED, TARGET, experiment_features, load_experiment, log_target,
@@ -17,10 +20,26 @@ from .models import dummy_model, linear_model, tree_model
 
 
 def classification_metrics(actual, predicted):
+    """Overall scores, plus precision/recall/F1 for each class and the confusion matrix."""
+    labels = sorted(set(actual) | set(predicted))
+    precision, recall, f1, support = precision_recall_fscore_support(
+        actual, predicted, labels=labels, zero_division=0,
+    )
     return {
         "accuracy": accuracy_score(actual, predicted),
         "balanced_accuracy": balanced_accuracy_score(actual, predicted),
         "macro_f1": f1_score(actual, predicted, average="macro", zero_division=0),
+        "per_class": {
+            label: {
+                "precision": float(p), "recall": float(r), "f1": float(f), "support": int(s),
+            }
+            for label, p, r, f, s in zip(labels, precision, recall, f1, support)
+        },
+        # Rows are the true class, columns the predicted class, both in `labels` order
+        "confusion_matrix": {
+            "labels": labels,
+            "matrix": confusion_matrix(actual, predicted, labels=labels).tolist(),
+        },
     }
 
 
