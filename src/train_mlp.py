@@ -5,7 +5,7 @@ Workflow (nothing is trained until you run this module):
      variations of the baseline plus a seeded random search.
   2. Freeze the config with the lowest validation log RMSE.
   3. Train Models 1-3 with that config over several seeds and report mean/std.
-Test data is only touched in step 3.
+Test predictions and metrics are computed only in step 3.
 """
 
 import argparse
@@ -17,7 +17,7 @@ import random
 import subprocess
 
 import numpy as np
-import torch
+import tensorflow as tf
 
 from .data import (
     DATA_PATH, MODEL_NAMES, experiment_features, load_experiment, log_target,
@@ -84,32 +84,32 @@ def run_ablation(data_path, seeds, baseline, n_random):
     groups, inputs = experiment_features(df, parts, MODEL_NAMES)
 
     # Model 0: predict the training mean. Anything the MLP scores must beat this.
-    mean_pred = np.full(len(y_test), y_train.mean())
+    mean_prediction = y_train.mean()
     reference = {
-        "validation": regression_metrics(y_val, np.full(len(y_val), y_train.mean())),
-        "test": regression_metrics(y_test, mean_pred),
+        "validation": regression_metrics(y_val, np.full(len(y_val), mean_prediction)),
     }
     print(f"mean-predictor {reference['validation']['rmse_log']:.4f} validation log RMSE")
 
-    def train_trial(name, config, seed):
+    def train_trial(name, config, seed, *, score_test=False):
         x_train, x_val, x_test = inputs[name]
         model, best_epoch, history = fit_mlp(x_train, y_train, x_val, y_val, config, seed)
-        return {
+        trial = {
             "seed": seed,
             "model": name,
             "config": asdict(config),
             "best_epoch": best_epoch,
             "validation": regression_metrics(y_val, predict_log(model, x_val)),
-            "test": regression_metrics(y_test, predict_log(model, x_test)),
             "history": history,
         }
+        if score_test:
+            trial["test"] = regression_metrics(y_test, predict_log(model, x_test))
+        return trial
 
-    # Step 1: tune on Model 3 using validation only; test metrics are ignored here.
+    # Step 1: tune on Model 3 using validation only.
     tuning_model, tuning_seed = MODEL_NAMES[-1], seeds[0]
     trials, selected, best_score = {}, None, float("inf")
     for label, config in candidate_configs(baseline, n_random, tuning_seed).items():
         trial = train_trial(tuning_model, config, tuning_seed)
-        trial.pop("test")  # keep test data out of selection and out of the log
         trials[label] = trial
         score = trial["validation"]["rmse_log"]
         print(f"tuning {label:22} {score:.4f} validation log RMSE", flush=True)
@@ -119,9 +119,10 @@ def run_ablation(data_path, seeds, baseline, n_random):
                           "hidden_sizes": tuple(trials[selected]["config"]["hidden_sizes"])})
 
     # Step 2/3: freeze the config, train every feature group on every seed.
+    reference["test"] = regression_metrics(y_test, np.full(len(y_test), mean_prediction))
     ablation = {}
     for name in MODEL_NAMES:
-        runs = [train_trial(name, chosen, seed) for seed in seeds]
+        runs = [train_trial(name, chosen, seed, score_test=True) for seed in seeds]
         ablation[name] = {"runs": runs, "test_summary": summarize(runs)}
         s = ablation[name]["test_summary"]["rmse_log"]
         print(f"{name} {s['mean']:.4f} ± {s['std']:.4f} held-out log RMSE", flush=True)
@@ -134,7 +135,7 @@ def run_ablation(data_path, seeds, baseline, n_random):
         "features": {name: groups[name] for name in MODEL_NAMES},
         "versions": {
             package: version(package)
-            for package in ("numpy", "pandas", "pyarrow", "scikit-learn", "torch")
+            for package in ("numpy", "pandas", "pyarrow", "scikit-learn", "tensorflow", "keras")
         },
         "mean_predictor_reference": reference,
         "selected_config": selected,
@@ -158,8 +159,9 @@ def main():
     if min(args.max_epochs, args.patience) < 1 or args.random_trials < 0:
         parser.error("--max-epochs and --patience must be positive; --random-trials >= 0")
 
-    torch.set_num_threads(1)
-    torch.use_deterministic_algorithms(True)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.experimental.enable_op_determinism()
     baseline = MLPConfig(max_epochs=args.max_epochs, patience=args.patience)
     results = run_ablation(args.data, args.seeds, baseline, args.random_trials)
     args.output.parent.mkdir(parents=True, exist_ok=True)

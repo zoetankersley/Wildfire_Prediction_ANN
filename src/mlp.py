@@ -1,12 +1,10 @@
-"""CPU training for wildfire size regression."""
+"""TensorFlow/Keras training for wildfire size regression."""
 
-from copy import deepcopy
 from dataclasses import dataclass
-import math
 
-import torch
-from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
 
 
 @dataclass(frozen=True)
@@ -25,71 +23,61 @@ class MLPConfig:
 
 def build_mlp(input_size, config):
     """Build a network with a single, unrestricted log-size output."""
-    layers = []
+    layers = [keras.Input(shape=(input_size,))]
     for width in config.hidden_sizes:
-        layers.append(nn.Linear(input_size, width))
+        layers.append(keras.layers.Dense(width))
         if config.batch_norm:
-            layers.append(nn.BatchNorm1d(width))
-        layers.append(nn.ReLU())
+            layers.append(keras.layers.BatchNormalization())
+        layers.append(keras.layers.ReLU())
         if config.dropout:
-            layers.append(nn.Dropout(config.dropout))
-        input_size = width
-    return nn.Sequential(*layers, nn.Linear(input_size, 1), nn.Flatten(0, 1))
+            layers.append(keras.layers.Dropout(config.dropout))
+    layers.append(keras.layers.Dense(1))
+    return keras.Sequential(layers)
 
 
 def fit_mlp(x_train, y_train, x_val, y_val, config, seed):
-    """Fit with AdamW (decoupled weight decay) and restore the epoch with the lowest validation RMSE."""
-    torch.manual_seed(seed)
-    model = build_mlp(x_train.shape[1], config)
-    loss_fn = {"mse": nn.MSELoss(), "huber": nn.HuberLoss(delta=config.huber_delta)}[
-        config.loss
+    """Fit with AdamW and restore the weights with the lowest validation RMSE."""
+    keras.utils.set_random_seed(seed)
+    losses = {
+        "mse": keras.losses.MeanSquaredError(),
+        "huber": keras.losses.Huber(delta=config.huber_delta),
+    }
+    early_stopping = keras.callbacks.EarlyStopping(
+        monitor="val_rmse", mode="min", patience=config.patience,
+        restore_best_weights=True,
+    )
+    # Match the scalar output with a column of targets for losses and metrics.
+    y_train = np.asarray(y_train, dtype=np.float32).reshape(-1, 1)
+    y_val = np.asarray(y_val, dtype=np.float32).reshape(-1, 1)
+    with tf.device("/CPU:0"):
+        model = build_mlp(x_train.shape[1], config)
+        model.compile(
+            optimizer=keras.optimizers.AdamW(
+                learning_rate=config.learning_rate, weight_decay=config.weight_decay,
+            ),
+            loss=losses[config.loss],
+            metrics=[keras.metrics.RootMeanSquaredError(name="rmse")],
+        )
+        metrics = model.fit(
+            x_train, y_train, validation_data=(x_val, y_val),
+            batch_size=config.batch_size, epochs=config.max_epochs, shuffle=True,
+            callbacks=[keras.callbacks.TerminateOnNaN(), early_stopping], verbose=0,
+        ).history
+
+    history = [
+        {"epoch": epoch, "train_loss": loss, "val_rmse": rmse}
+        for epoch, (loss, rmse) in enumerate(zip(metrics["loss"], metrics["val_rmse"]), start=1)
     ]
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
-    )
-    train = TensorDataset(
-        torch.as_tensor(x_train, dtype=torch.float32),
-        torch.as_tensor(y_train, dtype=torch.float32),
-    )
-    batches = DataLoader(
-        train, batch_size=config.batch_size, shuffle=True,
-        generator=torch.Generator().manual_seed(seed),
-        # Batch normalization requires at least two training examples per batch.
-        drop_last=config.batch_norm and len(train) % config.batch_size == 1,
-    )
-    x_val = torch.as_tensor(x_val, dtype=torch.float32)
-    y_val = torch.as_tensor(y_val, dtype=torch.float32)
-    best_rmse = float("inf")
-    history = []
-    for epoch in range(1, config.max_epochs + 1):
-        model.train()
-        total_loss, seen = 0.0, 0
-        for x, y in batches:
-            optimizer.zero_grad()
-            loss = loss_fn(model(x), y)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item() * len(y)
-            seen += len(y)
-
-        model.eval()
-        with torch.inference_mode():
-            residuals = model(x_val) - y_val
-            val_rmse = residuals.square().mean().sqrt().item()
-        if not math.isfinite(val_rmse):
-            raise FloatingPointError(f"Non-finite validation RMSE at epoch {epoch}")
-        history.append({"epoch": epoch, "train_loss": total_loss / seen, "val_rmse": val_rmse})
-        if val_rmse < best_rmse:
-            best_epoch, best_rmse = epoch, val_rmse
-            best_weights = deepcopy(model.state_dict())
-        elif epoch - best_epoch >= config.patience:
-            break
-
-    model.load_state_dict(best_weights)
+    for epoch in history:
+        if not np.isfinite([epoch["train_loss"], epoch["val_rmse"]]).all():
+            raise FloatingPointError(
+                f"Non-finite training loss or validation RMSE at epoch {epoch['epoch']}"
+            )
+    best_epoch = min(history, key=lambda epoch: epoch["val_rmse"])["epoch"]
     return model, best_epoch, history
 
 
-@torch.inference_mode()
 def predict_log(model, inputs):
-    model.eval()
-    return model(torch.as_tensor(inputs, dtype=torch.float32)).numpy()
+    """Return one log-size prediction per row."""
+    with tf.device("/CPU:0"):
+        return model(inputs, training=False).numpy().ravel()

@@ -2,4 +2,4 @@ numpy
 pandas
 pyarrow
 scikit-learn
-torch
+tensorflow>=2.16
