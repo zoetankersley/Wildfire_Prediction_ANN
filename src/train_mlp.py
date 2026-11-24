@@ -10,7 +10,6 @@ Test data is only touched in step 3.
 
 import argparse
 from dataclasses import asdict, replace
-from hashlib import file_digest
 from importlib.metadata import version
 import json
 from pathlib import Path
@@ -18,17 +17,14 @@ import random
 import subprocess
 
 import numpy as np
-import pandas as pd
 import torch
 
 from .data import (
-    DATA_PATH, GROUP, SPLIT_PATH, feature_sets, log_target, prepare_features, split,
+    DATA_PATH, MODEL_NAMES, experiment_features, load_experiment, log_target,
 )
 from .evaluate import regression_metrics
 from .mlp import MLPConfig, fit_mlp, predict_log
 
-SPLIT_SEED = 42  # matches docs/region_split_seed42.json made in notebooks/data_splitting.ipynb
-MODEL_NAMES = ("model1_weather", "model2_weather_veg", "model3_all")
 METRICS = ("rmse_log", "mae_log", "r2_log", "rmse_acres", "mae_acres")
 
 
@@ -40,20 +36,6 @@ def git_commit():
         return out.stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return None
-
-
-def check_saved_split(parts):
-    """Fail if our regional split differs from the team's saved assignment."""
-    if not SPLIT_PATH.exists():
-        return "saved split file not found; check skipped"
-    saved = json.loads(SPLIT_PATH.read_text())
-    for label, part in zip(("train", "val", "test"), parts):
-        wrong = [r for r in part[GROUP].unique() if saved.get(r) != label]
-        if wrong:
-            raise ValueError(
-                f"{label} regions disagree with {SPLIT_PATH.name}: {wrong[:5]}..."
-            )
-    return "matches docs/region_split_seed42.json"
 
 
 def candidate_configs(baseline, n_random, search_seed):
@@ -97,19 +79,9 @@ def summarize(runs):
 
 
 def run_ablation(data_path, seeds, baseline, n_random):
-    with data_path.open("rb") as data_file:
-        data_sha256 = file_digest(data_file, "sha256").hexdigest()
-    df = pd.read_parquet(data_path)
-    valid = np.isfinite(df["FIRE_SIZE"]) & (df["FIRE_SIZE"] >= 0)
-    parts = split(df.loc[valid], seed=SPLIT_SEED)
-    split_check = check_saved_split(parts)
+    df, parts, metadata = load_experiment(data_path)
     y_train, y_val, y_test = (log_target(part).to_numpy() for part in parts)
-    groups = feature_sets(df)
-    inputs = {}
-    for name in MODEL_NAMES:
-        # Median imputation cannot learn a value for columns empty in training.
-        groups[name] = [col for col in groups[name] if parts[0][col].notna().any()]
-        inputs[name] = prepare_features(*parts, groups[name])
+    groups, inputs = experiment_features(df, parts, MODEL_NAMES)
 
     # Model 0: predict the training mean. Anything the MLP scores must beat this.
     mean_pred = np.full(len(y_test), y_train.mean())
@@ -155,17 +127,10 @@ def run_ablation(data_path, seeds, baseline, n_random):
         print(f"{name} {s['mean']:.4f} ± {s['std']:.4f} held-out log RMSE", flush=True)
 
     return {
-        "data_sha256": data_sha256,
+        **metadata,
         "git_commit": git_commit(),
-        "split_seed": SPLIT_SEED,
-        "split_check": split_check,
         "training_seeds": seeds,
         "target": "log1p(FIRE_SIZE)",
-        "split": {
-            label: {"rows": len(part), "regions": sorted(part[GROUP].unique().tolist())}
-            for label, part in zip(("train", "validation", "test"), parts)
-        },
-        "excluded_invalid_targets": int((~valid).sum()),
         "features": {name: groups[name] for name in MODEL_NAMES},
         "versions": {
             package: version(package)
