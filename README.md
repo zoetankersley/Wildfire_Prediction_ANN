@@ -4,7 +4,9 @@ Yay!
 
 ## MLP regression and feature ablation
 
-From the repository root, install the dependencies and run the experiment:
+The MLP uses TensorFlow/Keras. From the repository root, use a Python
+environment supported by TensorFlow (for example, Python 3.13 on Apple
+Silicon) to install the dependencies and run the experiment:
 
 ```sh
 python -m pip install -r requirements.txt

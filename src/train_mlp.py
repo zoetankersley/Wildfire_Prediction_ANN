@@ -17,7 +17,7 @@ import random
 import subprocess
 
 import numpy as np
-import torch
+import tensorflow as tf
 
 from .data import (
     DATA_PATH, MODEL_NAMES, experiment_features, load_experiment, log_target,
@@ -134,7 +134,7 @@ def run_ablation(data_path, seeds, baseline, n_random):
         "features": {name: groups[name] for name in MODEL_NAMES},
         "versions": {
             package: version(package)
-            for package in ("numpy", "pandas", "pyarrow", "scikit-learn", "torch")
+            for package in ("numpy", "pandas", "pyarrow", "scikit-learn", "tensorflow", "keras")
         },
         "mean_predictor_reference": reference,
         "selected_config": selected,
@@ -158,8 +158,9 @@ def main():
     if min(args.max_epochs, args.patience) < 1 or args.random_trials < 0:
         parser.error("--max-epochs and --patience must be positive; --random-trials >= 0")
 
-    torch.set_num_threads(1)
-    torch.use_deterministic_algorithms(True)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.experimental.enable_op_determinism()
     baseline = MLPConfig(max_epochs=args.max_epochs, patience=args.patience)
     results = run_ablation(args.data, args.seeds, baseline, args.random_trials)
     args.output.parent.mkdir(parents=True, exist_ok=True)
