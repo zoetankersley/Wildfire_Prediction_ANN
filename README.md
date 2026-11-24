@@ -10,19 +10,19 @@ Silicon) to install the dependencies and run the experiment:
 
 ```sh
 python -m pip install -r requirements.txt
-python -m src.train_mlp --data data/clean_ca_2016_2020_mlp.parquet --output docs/mlp_results.json
+python -m src.train_mlp --output docs/mlp_results.json
 ```
 
 Useful flags: `--seeds 42 43 44` (training seeds), `--random-trials 20`
 (random-search configs), `--max-epochs`, `--patience`. For a quick check use
 `--random-trials 0 --seeds 42`.
 
-The `_mlp.parquet` file is a copy produced with the current
-`notebooks/data_cleaning.ipynb`, including its eight NDVI summary columns. To
-regenerate the inputs, place all five raw CSVs under `data/` with names ending
-in `_FPA_FOD_cons.csv` and run the cleaning notebook. Then omit `--data` to use
-its default Parquet output. The runner records the input SHA-256 and the actual
-feature lists so runs on different data can be told apart.
+Both runners default to `data/clean_ca_2016_2020_audited.parquet`. To build it,
+place one raw CSV per year from 2016 through 2020 under `data/`, using names
+such as `2020_FPA_FOD_cons.csv`, and run `notebooks/data_cleaning.ipynb`.
+The notebook checks year coverage, unique fire IDs, and the saved regional
+split before writing the new file. Each runner records the input SHA-256 and
+feature lists. Use the same file for fresh baseline and MLP results.
 
 ### Method
 
@@ -62,7 +62,7 @@ Use the same Parquet path for the baselines and the MLP to compare scores on
 identical rows and features.
 
 ```sh
-python -m src.train_baselines --data data/clean_ca_2016_2020_mlp.parquet
+python -m src.train_baselines
 ```
 
 The runner fits all baselines on the training split for each of the three MLP
