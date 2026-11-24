@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 # Works no matter which folder you run from
-DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "clean_ca_2016_2020.parquet"
+DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "clean_ca_2016_2020_audited.parquet"
 # Saved region -> train/val/test assignment from split(df, seed=42), made in notebooks/data_splitting.ipynb
 SPLIT_PATH = Path(__file__).resolve().parent.parent / "docs" / "region_split_seed42.json"
 
@@ -24,7 +24,7 @@ WEATHER = [
     "fm100_Normal", "fm1000_Normal", "bi_Normal", "vpd_Normal", "erc_Normal",
     "Annual_precipitation", "Annual_tempreture",
     # How unusual the day is (converted to percentile numbers in the notebook)
-    "tmmn_Percentile", "tmmx_Percentile", "sph_Percentile", "vs_Percentile",
+    "sph_Percentile", "vs_Percentile",
     "fm100_Percentile", "bi_Percentile", "vpd_Percentile", "erc_Percentile",
     # Season
     "DISCOVERY_DOY", "DISCOVERY_MONTH",
@@ -59,7 +59,7 @@ def load():
 
 def feature_sets(df):
     """The three feature combinations to compare. Adds the one-hot land cover/EVT columns automatically."""
-    one_hot = [c for c in df.columns if c.startswith(("LC_", "EVT_"))]
+    one_hot = [c for c in df.columns if c.startswith(("LC_", "EVT_")) and c != "EVT_1km"]
     vegetation = VEGETATION_BASE + one_hot
 
     def keep(cols):
@@ -115,7 +115,7 @@ def prepare(train, val, test, features):
 
 # to add separate the mutable and immutable features for the model explainability
 def mutability(df):
-    lc_evt = [c for c in df.columns if c.startswith(("LC_", "EVT_"))]
+    lc_evt = [c for c in df.columns if c.startswith(("LC_", "EVT_")) and c != "EVT_1km"]
     mutable = ["NDVI-1day"] + lc_evt  + HUMAN        # fuel / vegetation
     immutable = WEATHER + GEOGRAPHY    # weather, season, terrain, location
     return {"mutable": [c for c in mutable if c in df.columns],

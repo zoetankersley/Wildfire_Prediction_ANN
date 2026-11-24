@@ -1,6 +1,6 @@
-# Data Dictionary: `clean_ca_2016_2020.parquet`
+# Data Dictionary: `clean_ca_2016_2020_audited.parquet`
 
-California wildfires discovered 2016–2020. **43,561 rows × 96 columns**, one row per fire.
+California wildfires discovered 2016–2020. **43,561 rows × 102 columns**, one row per source fire ID.
 
 - **Source:** FPA FOD-Attributes (Pourmohamad et al., 2024), filtered to California by [`notebooks/data_cleaning.ipynb`](../notebooks/data_cleaning.ipynb).
 - **Load with:** `from src.data import load; df = load()`
@@ -10,9 +10,11 @@ California wildfires discovered 2016–2020. **43,561 rows × 96 columns**, one 
 
 ---
 
-## 1. Weather (36 columns)
+## 1. Weather (34 columns)
 
 ### 1a. Conditions on the day of discovery
+
+These are daily summaries. They describe discovery-day conditions and can include hours after discovery.
 
 | Column | Description | Units | Range | Missing |
 |---|---|---|---|---|
@@ -54,8 +56,6 @@ The source stores these as text ranges (`"<10th"`, `"10th-30th"`, `">90th"`). Th
 
 | Column | Description | Values | Missing |
 |---|---|---|---|
-| `tmmn_Percentile` | Percentile of the day's minimum temperature | **95 only** ⚠️ | 0% |
-| `tmmx_Percentile` | Percentile of the day's maximum temperature | **95 only** ⚠️ | 0% |
 | `sph_Percentile` | Percentile of specific humidity | 5, 20, 40, 60, 80, 95 | 0% |
 | `vs_Percentile` | Percentile of wind speed | 5, 20, 40, 60, 80, 95 | 0.2% |
 | `fm100_Percentile` | Percentile of 100-hour fuel moisture | 5, 20, 40, 60, 80, 95 | 0% |
@@ -78,7 +78,13 @@ The source stores these as text ranges (`"<10th"`, `"10th-30th"`, `">90th"`). Th
 
 | Column | Description | Units | Range | Missing |
 |---|---|---|---|---|
-| `NDVI-1day` | Normalized Difference Vegetation Index just before discovery. Higher means greener, denser vegetation; near 0 or negative means bare ground, water, or pavement. | unitless (−1 to 1) | −0.32 – 1.03 ⚠️ | 2.4% |
+| `NDVI-1day` | Normalized Difference Vegetation Index just before discovery. Higher means greener, denser vegetation. Values near zero or below can indicate bare ground, water, or pavement. | unitless (−1 to 1) | −0.32 – 0.98 | 2.4% |
+
+`NDVI_min`, `NDVI_max`, `NDVI_mean`, and `MOD_NDVI_12m` each produce two
+features. The `_avg` feature averages valid values in the 12 months before
+discovery. The `_last` feature uses the first entry, the month immediately
+before discovery. That feature stays missing if the first entry is missing or
+outside the NDVI range of −1 to 1.
 
 ### 2b. Land cover: `LC_<code>` (one-hot, 16 columns)
 
@@ -103,9 +109,9 @@ Each column is 1 if the ignition point falls in that **NLCD land cover class** a
 | `LC_90.0` | Woody wetlands | 0.2% |
 | `LC_95.0` | Emergent herbaceous wetlands | 0.3% |
 
-### 2c. Existing vegetation type: `EVT_<code>` (one-hot, 22 columns)
+### 2c. Existing vegetation type: `EVT_<code>` (one-hot, 21 columns)
 
-Each column is 1 if the ignition point falls in that **LANDFIRE Existing Vegetation Type**. The cleaning notebook kept the 20 most common codes and lumped the rest into `EVT_other`.
+Each column is 1 if the ignition point falls in that **LANDFIRE Existing Vegetation Type**. The cleaning notebook keeps the 20 most common codes in the training regions and groups the rest into `EVT_other`.
 
 LANDFIRE code names depend on the product version, so look up the exact names in the LANDFIRE EVT attribute table for the version used by FPA FOD-Attributes. Codes 7296–7299 are LANDFIRE's "Developed" classes.
 
@@ -119,8 +125,8 @@ LANDFIRE code names depend on the product version, so look up the exact names in
 | `EVT_7092.0` | 0.8% | `EVT_7914.0` | 1.1% |
 | `EVT_7098.0` | 0.8% | `EVT_7984.0` | 0.6% |
 | `EVT_7105.0` | 1.1% | `EVT_9301.0` | 2.4% |
-| `EVT_7110.0` | 1.1% | `EVT_9337.0` | 0.6% |
-| `EVT_7296.0` | 1.2% | `EVT_other` | 12.0% |
+| `EVT_7110.0` | 1.1% | `EVT_7031.0` | 0.5% |
+| `EVT_7296.0` | 1.2% | `EVT_other` | 12.1% |
 | `EVT_7297.0` | 1.1% | | |
 
 ---
@@ -137,12 +143,12 @@ Columns without a suffix are at the ignition point (30 m cell). `_1km` columns a
 | `Slope` | Steepness of the ground | degrees | 0 – 58 | 0% |
 | `TPI` | Topographic Position Index: positive = ridge or hilltop, negative = valley, ~0 = flat or mid-slope | index | −12.38 – 40.5 | 0% |
 | `Elevation_1km` | Elevation, 1 km average | m | −65.6 – 2,981 | 0% |
-| `Slope_1km` | Slope, 1 km average | degrees | −0.81 – 31.47 ⚠️ | 0% |
+| `Slope_1km` | Slope, 1 km average. Negative source readings are treated as missing. | degrees | 0 – 31.47 | 22.0% |
 | `TPI_1km` | Topographic Position Index, 1 km scale (different scale than `TPI`) | index | −0.48 – 0.45 | 0% |
 | `Aspect_sin` | East–west facing direction: +1 = east, −1 = west, 0 = flat | −1 to 1 | −1 – 1 | 0% |
 | `Aspect_cos` | North–south facing direction: +1 = north, −1 = south, 0 = flat | −1 to 1 | −1 – 1 | 0% |
 | `Aspect_1km_sin` | East–west facing direction, 1 km scale | −1 to 1 | −0.98 – 1 | 0% |
-| `Aspect_1km_cos` | North–south facing direction, 1 km scale | −1 to 1 | −1 – 0.99 | 0% |
+| `Aspect_1km_cos` | North–south facing direction, 1 km scale | −1 to 1 | −1 – 1 | 0% |
 
 **Why sine and cosine?** Aspect is a compass bearing, so 359° and 1° both face north even though the numbers are far apart. Splitting it into sin/cos lets the model treat nearby directions as similar. Where slope is under 2°, both values are set to 0 ("no direction") so flat farmland and towns aren't mislabeled as north-facing.
 
@@ -177,11 +183,14 @@ Columns without a suffix are at the ignition point (30 m cell). `_1km` columns a
 
 ---
 
-## ⚠️ Data issues to discuss with the team
+## Data audit notes
 
-1. **`tmmn_Percentile` and `tmmx_Percentile` are the same value (95) in every row**, so they give the model no information. The text-to-number conversion in the cleaning notebook (step 7) may be collapsing their labels. Check the raw values.
-2. **`src/data.py` lists vegetation columns that aren't in the file:** `NDVI_min`, `NDVI_max`, `NDVI_mean`, `MOD_NDVI_12m`. `feature_sets()` silently skips them, so the vegetation group is really just `NDVI-1day` plus the LC/EVT one-hot columns. They were probably dropped in step 5 for being more than 50% missing.
-3. **`Slope_1km` is negative in 9,582 rows (22%)**, which isn't possible for a slope in degrees. It may be a resampling artifact or a different unit.
-4. **`NDVI-1day` has values above 1** (max 1.03), outside NDVI's valid −1 to 1 range.
-5. **`EVT_7299.0` covers 68.7% of fires.** It's worth confirming its LANDFIRE name, since one category this dominant will strongly shape the vegetation model.
-6. **There is no `LC_other` column, but there is an `EVT_other`.** California only has 16 land cover codes, so all of them fit in the top 20.
+- Both raw air-temperature percentile fields contain only `">90%"` for
+  California. The weather features exclude them.
+- Negative slope and out-of-range NDVI values are set to missing. The
+  experiment fills missing features with medians fitted on the training split.
+- All five raw years contain 43,561 California records with unique source fire
+  IDs. Records that share a location, date, and reported size can have distinct
+  source IDs. The regional split keeps such records together.
+- `EVT_7299.0` covers 68.7% of fires. Confirm the code name for the source
+  LANDFIRE product before interpreting its effect.
