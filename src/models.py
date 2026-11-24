@@ -15,7 +15,9 @@ def dummy_model(seed=42):
 def linear_model(seed=42):
     """Logistic regression with L2 regularization. class_weight='balanced' makes rare classes count more."""
     return {
-        "logistic": LogisticRegression(penalty="l2", max_iter=1000, class_weight="balanced", random_state=seed),
+        "logistic": LogisticRegression(
+            max_iter=1000, class_weight="balanced", random_state=seed,
+        ),
     }
 
 

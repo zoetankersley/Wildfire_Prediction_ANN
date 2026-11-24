@@ -1,4 +1,5 @@
 """Shared data code: load the cleaned California data, define feature groups, split by location, and preprocess."""
+from hashlib import file_digest
 import json
 from pathlib import Path
 
@@ -43,6 +44,9 @@ GEOGRAPHY = [
 ]
 
 HUMAN = ["Population", "GAP_Prity", "EPL_MOBILE"]
+
+SPLIT_SEED = 42
+MODEL_NAMES = ("model1_weather", "model2_weather_veg", "model3_all")
 
 TARGET = "TARGET"
 GROUP = "REGION"   # 0.5 x 0.5 degree grid block, created in the cleaning notebook
@@ -150,3 +154,48 @@ def combined_split(df, split_map=None):
     val = df[(df["FIRE_YEAR"] == 2019) & (s == "val")]
     test = df[(df["FIRE_YEAR"] == 2020) & (s == "test")]
     return train, val, test
+
+
+def check_saved_split(parts):
+    """Fail if our regional split differs from the team's saved assignment."""
+    if not SPLIT_PATH.exists():
+        return "saved split file not found; check skipped"
+    saved = json.loads(SPLIT_PATH.read_text())
+    for label, part in zip(("train", "val", "test"), parts):
+        wrong = [r for r in part[GROUP].unique() if saved.get(r) != label]
+        if wrong:
+            raise ValueError(
+                f"{label} regions disagree with {SPLIT_PATH.name}: {wrong[:5]}..."
+            )
+    return "matches docs/region_split_seed42.json"
+
+
+def load_experiment(data_path):
+    """Load and split the same valid fire-size rows for the network and baselines."""
+    with data_path.open("rb") as data_file:
+        data_sha256 = file_digest(data_file, "sha256").hexdigest()
+    df = pd.read_parquet(data_path)
+    valid = (np.isfinite(df["FIRE_SIZE"]) & (df["FIRE_SIZE"] >= 0)).fillna(False)
+    parts = split(df.loc[valid], seed=SPLIT_SEED)
+    return df, parts, {
+        "data_sha256": data_sha256,
+        "split_seed": SPLIT_SEED,
+        "split_check": check_saved_split(parts),
+        "split": {
+            label: {"rows": len(part), "regions": sorted(part[GROUP].unique().tolist())}
+            for label, part in zip(("train", "validation", "test"), parts)
+        },
+        "excluded_invalid_targets": int((~valid).sum()),
+    }
+
+
+def experiment_features(df, parts, names):
+    """Prepare requested feature groups, dropping columns empty in training."""
+    available = feature_sets(df)
+    train = parts[0]
+    groups = {
+        name: [column for column in available[name] if train[column].notna().any()]
+        for name in names
+    }
+    inputs = {name: prepare_features(*parts, columns) for name, columns in groups.items()}
+    return groups, inputs

@@ -53,3 +53,26 @@ feature lists so runs on different data can be told apart.
 Not yet recorded for the current runner. Run the command above and add the
 held-out log RMSE (mean ± std over seeds) for each model, next to the
 mean-predictor reference, from `docs/mlp_results.json`.
+
+## Baseline models
+
+Use the same Parquet path for the baselines and the MLP to compare scores on
+identical rows and features.
+
+```sh
+python -m src.train_baselines --data data/clean_ca_2016_2020_mlp.parquet
+```
+
+The runner fits all baselines on the training split for each of the three MLP
+feature groups and reports validation and held-out test scores.
+
+- Regression uses the training mean, training median, linear regression, and
+  random forest. Compare log RMSE with the MLP, using the same feature group.
+- Classification uses the training majority class, logistic regression, and
+  random forest. It reports accuracy, balanced accuracy, and macro F1.
+  The default is the project's `TARGET` label, which merges D/E and F/G.
+  Pass `--classification-target FIRE_SIZE_CLASS` for the seven NWCG classes.
+
+Results print as JSON. Pass `--output` with a path to save them. The report
+includes the input hash, regional split, and feature lists for comparison with
+the MLP report.
